@@ -66,7 +66,7 @@ func (s *Server) getWeather(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	if err := godotenv.Load(); err != nil {
-		log.Println("No env file found: ", err.Error())
+		log.Println("unable to load env file: ", err.Error())
 	}
 	apiKey, ok := os.LookupEnv("WEATHER_API_KEY")
 	if !ok {
