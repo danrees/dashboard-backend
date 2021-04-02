@@ -12,17 +12,30 @@ import (
 	"github.com/joho/godotenv"
 )
 
+var DEBUG = false
+
+var DEBUG_LOG = log.New(os.Stderr, "DEBUG: ", log.LstdFlags)
+var INFO_LOG = log.New(os.Stderr, "INFO: ", log.LstdFlags)
+
 type Cache struct {
 	mu     *sync.Mutex
 	item   *weather.Weather
 	stamp  *time.Time
 	client *weather.Client
+	ttl    time.Duration
 }
 
 func (c *Cache) get() (*weather.Weather, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if (c.item == nil || c.stamp == nil) || time.Now().After(c.stamp.Add(30*time.Minute)) {
+	if (c.item == nil || c.stamp == nil) || time.Now().After(c.stamp.Add(c.ttl)) {
+		if DEBUG {
+			if c.item == nil || c.stamp == nil {
+				DEBUG_LOG.Println("Setting weather value for the first time")
+			} else {
+				DEBUG_LOG.Println("Refresing weather data")
+			}
+		}
 		stamp := time.Now()
 		c.stamp = &stamp
 		w, err := c.client.Get()
@@ -30,6 +43,8 @@ func (c *Cache) get() (*weather.Weather, error) {
 			return nil, err
 		}
 		c.item = w
+	} else {
+		DEBUG_LOG.Printf("returning weather data from cache, valid for %v", c.ttl-time.Since(*c.stamp))
 	}
 	return c.item, nil
 }
@@ -38,11 +53,12 @@ type Server struct {
 	cache *Cache
 }
 
-func NewServer(cityID, apiKey string) *Server {
+func NewServer(cityID, apiKey string, ttl time.Duration) *Server {
 	server := Server{
 		cache: &Cache{
 			mu:     &sync.Mutex{},
 			client: weather.New("https://api.openweathermap.org", cityID, apiKey),
+			ttl:    ttl,
 		},
 	}
 	return &server
@@ -76,7 +92,19 @@ func main() {
 	if !ok {
 		log.Fatal("You must provide an open weather map city id")
 	}
-	server := NewServer(cityID, apiKey)
+	ttlString, ok := os.LookupEnv("WEATHER_CACHE_TTL")
+	if !ok {
+		ttlString = "30m"
+	}
+	_, ok = os.LookupEnv("WEATHER_DEBUG")
+	if ok {
+		DEBUG = true
+	}
+	ttl, err := time.ParseDuration(ttlString)
+	if err != nil {
+		ttl = 30 * time.Minute
+	}
+	server := NewServer(cityID, apiKey, ttl)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/weather", server.getWeather)
 	log.Println("Starting server on port 8000")
