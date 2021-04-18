@@ -1,10 +1,12 @@
 package weather
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 )
 
@@ -19,6 +21,15 @@ func New(addr, cityID, apiKey string) *Client {
 	}
 }
 
+func WithCache(c *Client, ttl time.Duration) *Cacher {
+	return &Cacher{
+		Client: c,
+		cached: nil,
+		ttl:    ttl,
+		mu:     &sync.Mutex{},
+	}
+}
+
 type Client struct {
 	client *http.Client
 	addr   string
@@ -26,7 +37,7 @@ type Client struct {
 	cityID string
 }
 
-func (c *Client) Get() (*Weather, error) {
+func (c *Client) Get(ctx context.Context) (*Weather, error) {
 	addr := fmt.Sprintf("%s/data/2.5/weather", c.addr)
 
 	link, err := url.Parse(addr)
@@ -38,7 +49,12 @@ func (c *Client) Get() (*Weather, error) {
 	params.Add("appid", c.apiKey)
 	link.RawQuery = params.Encode()
 
-	resp, err := http.Get(link.String())
+	//resp, err := http.Get(link.String())
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, link.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -51,6 +67,28 @@ func (c *Client) Get() (*Weather, error) {
 	}
 
 	return w, nil
+}
+
+type Cacher struct {
+	mu        *sync.Mutex
+	cached    *Weather
+	expiresAt time.Time
+	ttl       time.Duration
+	*Client
+}
+
+func (c *Cacher) Get(ctx context.Context) (*Weather, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var err error
+	if c.cached == nil || time.Now().After(c.expiresAt) {
+		c.cached, err = c.Client.Get(ctx)
+		if err != nil {
+			return nil, err
+		}
+		c.expiresAt = time.Now().Add(c.ttl)
+	}
+	return c.cached, nil
 }
 
 type Weather struct {
