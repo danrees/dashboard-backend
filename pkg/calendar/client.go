@@ -92,15 +92,13 @@ func New(ctx context.Context, apiKey string, calendarID string) (*Client, error)
 	}, nil
 }
 
-func WithCache(c *Client, err error) (*Cacher, error) {
-	if err != nil {
-		return nil, err
-	}
+func (c *Client) WithCache(ttl time.Duration) *Cacher {
+
 	return &Cacher{
 		Client: c,
-		ttl:    DefaultTTL,
+		ttl:    ttl,
 		my:     &sync.Mutex{},
-	}, nil
+	}
 }
 
 func (c *Client) Calendars(ctx context.Context) (*calendar.CalendarList, error) {

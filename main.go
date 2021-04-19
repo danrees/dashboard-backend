@@ -40,13 +40,13 @@ type Server struct {
 }
 
 func NewServer(ctx context.Context, wConfig WeatherConfig, cConfig CalendarConfig) (*Server, error) {
-	cal, err := calendar.WithCache(calendar.New(ctx, cConfig.APIKey, cConfig.CalendarID))
+	cal, err := calendar.New(ctx, cConfig.APIKey, cConfig.CalendarID)
 	if err != nil {
 		return nil, err
 	}
-	w := weather.WithCache(weather.New(DefaultWeather, wConfig.CityID, wConfig.APIKey), 2*time.Minute)
+	w := weather.New(DefaultWeather, wConfig.CityID, wConfig.APIKey).WithCache(wConfig.TTL)
 	server := Server{
-		cal: cal,
+		cal: cal.WithCache(2 * time.Minute),
 		w:   w,
 	}
 	return &server, nil

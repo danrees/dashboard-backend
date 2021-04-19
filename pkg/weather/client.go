@@ -21,7 +21,7 @@ func New(addr, cityID, apiKey string) *Client {
 	}
 }
 
-func WithCache(c *Client, ttl time.Duration) *Cacher {
+func (c *Client) WithCache(ttl time.Duration) *Cacher {
 	return &Cacher{
 		Client: c,
 		cached: nil,
