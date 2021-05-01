@@ -85,6 +85,10 @@ func (s *Server) getEvents(w http.ResponseWriter, r *http.Request) {
 			DEBUG_LOG.Println(e.Description)
 		}
 	}
+	if err := json.NewEncoder(w).Encode(ev.Items); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 func (s *Server) getCalendars(w http.ResponseWriter, r *http.Request) {
