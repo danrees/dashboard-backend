@@ -13,6 +13,7 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/calendar/v3"
+	"google.golang.org/api/option"
 )
 
 var DefaultTTL = 2 * time.Minute
@@ -82,7 +83,7 @@ func New(ctx context.Context, apiKey string, calendarID string) (*Client, error)
 		return nil, err
 	}
 
-	cal, err := calendar.New(cl)
+	cal, err := calendar.NewService(ctx, option.WithHTTPClient(cl))
 	if err != nil {
 		return nil, err
 	}

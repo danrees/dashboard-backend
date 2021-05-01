@@ -26,12 +26,14 @@ type WeatherConfig struct {
 type CalendarConfig struct {
 	APIKey     string
 	CalendarID string
+	TTL        time.Duration
 }
 
 var DEBUG = false
 
 var DEBUG_LOG = log.New(os.Stderr, "DEBUG: ", log.LstdFlags|log.Lshortfile)
-var INFO_LOG = log.New(os.Stderr, "INFO: ", log.LstdFlags|log.Lshortfile)
+
+//var INFO_LOG = log.New(os.Stderr, "INFO: ", log.LstdFlags|log.Lshortfile)
 var ERROR_LOG = log.New(os.Stderr, "INFO: ", log.LstdFlags|log.Lshortfile)
 
 type Server struct {
@@ -46,7 +48,7 @@ func NewServer(ctx context.Context, wConfig WeatherConfig, cConfig CalendarConfi
 	}
 	w := weather.New(DefaultWeather, wConfig.CityID, wConfig.APIKey).WithCache(wConfig.TTL)
 	server := Server{
-		cal: cal.WithCache(2 * time.Minute),
+		cal: cal.WithCache(cConfig.TTL),
 		w:   w,
 	}
 	return &server, nil
@@ -79,7 +81,9 @@ func (s *Server) getEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, e := range ev.Items {
-		DEBUG_LOG.Println(e.Description)
+		if DEBUG {
+			DEBUG_LOG.Println(e.Description)
+		}
 	}
 }
 
@@ -92,10 +96,6 @@ func (s *Server) getCalendars(w http.ResponseWriter, r *http.Request) {
 	for _, cal := range cl.Items {
 		DEBUG_LOG.Println((cal.Id))
 	}
-}
-
-func (s *Server) subscribe(w http.ResponseWriter, r *http.Request) {
-
 }
 
 func init() {
@@ -129,6 +129,7 @@ func main() {
 
 	ttl, err := time.ParseDuration(ttlString)
 	if err != nil {
+		ERROR_LOG.Printf("%s is not a valid duration, using default 30 minutes", ttlString)
 		ttl = 30 * time.Minute
 	}
 	calenderAPI, ok := os.LookupEnv("CALENDAR_API_KEY")
@@ -139,6 +140,15 @@ func main() {
 	if !ok {
 		ERROR_LOG.Fatal("You must provide a calendar id")
 	}
+	calendarTTLString, ok := os.LookupEnv("CALENDAR_TTL")
+	if !ok {
+		calendarTTLString = "30m"
+	}
+	calendarTTL, err := time.ParseDuration(calendarTTLString)
+	if err != nil {
+		ERROR_LOG.Printf("%s is not a valid duration, using default 30m", calendarTTLString)
+		calendarTTL = 30 * time.Minute
+	}
 	server, err := NewServer(ctx,
 		WeatherConfig{
 			APIKey: apiKey,
@@ -147,80 +157,17 @@ func main() {
 		}, CalendarConfig{
 			APIKey:     calenderAPI,
 			CalendarID: calendarID,
+			TTL:        calendarTTL,
 		})
 	if err != nil {
 		ERROR_LOG.Fatal(err)
 	}
-	br := Broker{}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/weather", server.getWeather)
 	mux.HandleFunc("/api/calendar", server.getEvents)
-	mux.Handle("/subscribe", &br)
 	log.Println("Starting server on port 8000")
 	if err := http.ListenAndServe(":8000", mux); err != nil {
 		panic(err)
-	}
-}
-
-type Broker struct {
-	clients        map[chan *weather.Weather]bool
-	newClients     chan chan *weather.Weather
-	defunctClients chan chan *weather.Weather
-	msg            chan *weather.Weather
-}
-
-func (b *Broker) Start() error {
-	go func() {
-		for {
-			select {
-			case c := <-b.newClients:
-				b.clients[c] = true
-			case c := <-b.defunctClients:
-				delete(b.clients, c)
-				close(c)
-			case m := <-b.msg:
-				for k := range b.clients {
-					k <- m
-				}
-			}
-		}
-	}()
-
-	return nil
-}
-
-func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	f, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "events not supported", http.StatusInternalServerError)
-		return
-	}
-	messageChan := make(chan *weather.Weather)
-
-	b.newClients <- messageChan
-
-	notify := w.(http.CloseNotifier).CloseNotify()
-	go func() {
-		<-notify
-		b.defunctClients <- messageChan
-
-	}()
-
-	h := w.Header()
-	h.Set("Content-Type", "text/event-stream")
-	h.Set("Cache-Control", "no-cache")
-	h.Set("Connection", "keep-alive")
-	h.Set("Transfer-Encoding", "chunked")
-
-	for {
-		msg, open := <-messageChan
-		if !open {
-			break
-		}
-		if err := json.NewEncoder(w).Encode(msg); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		f.Flush()
 	}
 }
