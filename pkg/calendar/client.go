@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"sync"
@@ -21,6 +22,7 @@ var DefaultTTL = 2 * time.Minute
 type Client struct {
 	svc        *calendar.Service
 	calendarID string
+	debug      *log.Logger
 }
 
 type Cacher struct {
@@ -90,6 +92,7 @@ func New(ctx context.Context, apiKey string, calendarID string) (*Client, error)
 	return &Client{
 		svc:        cal,
 		calendarID: calendarID,
+		debug:      log.New(os.Stderr, "DEBUG: ", log.LstdFlags),
 	}, nil
 }
 
@@ -116,7 +119,7 @@ func (c *Client) List(ctx context.Context) (*calendar.Events, error) {
 		SingleEvents(true).
 		TimeMin(time.Now().Format(time.RFC3339)).
 		ShowDeleted(false).
-		TimeMax(time.Now().Add(24 * time.Hour).Format(time.RFC3339)).
+		TimeMax(time.Now().Add(7 * 24 * time.Hour).Format(time.RFC3339)).
 		Context(ctx).
 		Do()
 	if err != nil {
@@ -129,7 +132,8 @@ func (c *Cacher) List(ctx context.Context) (*calendar.Events, error) {
 	c.my.Lock()
 	defer c.my.Unlock()
 	var err error
-	if c.events == nil || time.Now().After(c.cachedAt) {
+	if c.events == nil || !c.cachedAt.Add(c.ttl).After(time.Now()) {
+		c.Client.debug.Print("cache miss querying")
 		c.events, err = c.Client.List(ctx)
 		if err != nil {
 			return nil, err
