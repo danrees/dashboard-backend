@@ -72,6 +72,7 @@ func (s *Server) getWeather(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) calendar(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	switch r.Method {
 	case http.MethodGet:
 		s.getEvents(w, r)
