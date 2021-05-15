@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"sync"
 	"time"
 )
@@ -27,6 +29,7 @@ func (c *Client) WithCache(ttl time.Duration) *Cacher {
 		cached: nil,
 		ttl:    ttl,
 		mu:     &sync.Mutex{},
+		debug:  log.New(os.Stderr, "DEBUG: ", log.LstdFlags),
 	}
 }
 
@@ -74,6 +77,7 @@ type Cacher struct {
 	cached    *Weather
 	expiresAt time.Time
 	ttl       time.Duration
+	debug     *log.Logger
 	*Client
 }
 
@@ -82,6 +86,7 @@ func (c *Cacher) Get(ctx context.Context) (*Weather, error) {
 	defer c.mu.Unlock()
 	var err error
 	if c.cached == nil || time.Now().After(c.expiresAt) {
+		c.debug.Println("cache miss, calling weather")
 		c.cached, err = c.Client.Get(ctx)
 		if err != nil {
 			return nil, err
