@@ -59,6 +59,7 @@ func (s *Server) getWeather(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unsupported method", http.StatusBadRequest)
 		return
 	}
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	wr, err := s.w.Get(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
