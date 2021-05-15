@@ -71,6 +71,18 @@ func (s *Server) getWeather(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) calendar(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		s.getEvents(w, r)
+	case http.MethodPost:
+		s.saveCalender(w, r)
+	default:
+		http.Error(w, "unsupported method", http.StatusMethodNotAllowed)
+		return
+	}
+}
+
 func (s *Server) getEvents(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, fmt.Sprintf("%v usupported method", r.Method), http.StatusMethodNotAllowed)
@@ -101,6 +113,29 @@ func (s *Server) getCalendars(w http.ResponseWriter, r *http.Request) {
 	for _, cal := range cl.Items {
 		DEBUG_LOG.Println((cal.Id))
 	}
+}
+
+func (s *Server) saveCalender(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "unsupported method", http.StatusMethodNotAllowed)
+		return
+	}
+	ev := new(calendar.Event)
+	if err := json.NewDecoder(r.Body).Decode(ev); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+	saved, err := s.cal.Save(r.Context(), ev)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := json.NewEncoder(w).Encode(saved); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 }
 
 func init() {
@@ -170,7 +205,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/weather", server.getWeather)
-	mux.HandleFunc("/api/calendar", server.getEvents)
+	mux.HandleFunc("/api/calendar", server.calendar)
 	log.Println("Starting server on port 8000")
 	if err := http.ListenAndServe(":8000", mux); err != nil {
 		panic(err)

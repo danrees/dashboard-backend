@@ -19,6 +19,11 @@ import (
 
 var DefaultTTL = 2 * time.Minute
 
+type Event struct {
+	Summary string    `json:"summary,omitempty"`
+	Date    time.Time `json:"date,omitempty"`
+}
+
 type Client struct {
 	svc        *calendar.Service
 	calendarID string
@@ -76,7 +81,7 @@ func New(ctx context.Context, apiKey string, calendarID string) (*Client, error)
 	if err != nil {
 		return nil, err
 	}
-	config, err := google.ConfigFromJSON(b, calendar.CalendarReadonlyScope, calendar.CalendarEventsReadonlyScope)
+	config, err := google.ConfigFromJSON(b, calendar.CalendarReadonlyScope, calendar.CalendarEventsScope)
 	if err != nil {
 		return nil, err
 	}
@@ -126,6 +131,22 @@ func (c *Client) List(ctx context.Context) (*calendar.Events, error) {
 		return nil, fmt.Errorf("could not list calendar events: %w", err)
 	}
 	return evs, nil
+}
+
+func (c *Client) Save(ctx context.Context, ev *Event) (*calendar.Event, error) {
+	cl := c.svc.Events.Insert(c.calendarID, &calendar.Event{
+		Summary: ev.Summary,
+		Start: &calendar.EventDateTime{
+			Date: ev.Date.Format("2006-01-02"),
+		},
+		End: &calendar.EventDateTime{
+			Date: ev.Date.Format("2006-01-02"),
+		},
+	})
+	saved, err := cl.
+		Context(ctx).
+		Do()
+	return saved, err
 }
 
 func (c *Cacher) List(ctx context.Context) (*calendar.Events, error) {
